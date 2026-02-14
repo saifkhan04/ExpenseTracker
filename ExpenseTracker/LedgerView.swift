@@ -15,9 +15,6 @@ struct LedgerView: View {
     // Search (all-time)
     @State private var searchText: String = ""
 
-    // Animation direction for month navigation
-    @State private var navDirection: Int = 0 // -1 newer, +1 older
-
     var body: some View {
         List {
             Section {
@@ -74,7 +71,6 @@ struct LedgerView: View {
                 }
             }
             .id(animatedContentID)
-            .transition(contentTransition)
             .animation(.easeInOut(duration: 0.25), value: animatedContentID)
         }
         .navigationTitle("Ledger")
@@ -87,26 +83,8 @@ struct LedgerView: View {
             // When searching, force global mode (All months)
             if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 selectedMonthStart = nil
-                navDirection = 0
             }
         }
-        // Swipe left/right month navigation only when NOT searching and month filter active
-        .highPriorityGesture(
-            DragGesture(minimumDistance: 18)
-                .onEnded { value in
-                    guard !isSearching, selectedMonthStart != nil else { return }
-
-                    let dx = value.translation.width
-                    let dy = value.translation.height
-                    guard abs(dx) > abs(dy) else { return }
-
-                    if dx < -35 {       // swipe left -> older month
-                        goToOlderMonth()
-                    } else if dx > 35 { // swipe right -> newer month
-                        goToNewerMonth()
-                    }
-                }
-        )
     }
 
     // MARK: - Top UI
@@ -184,7 +162,6 @@ struct LedgerView: View {
             Button("All") {
                 withAnimation(.easeInOut) {
                     selectedMonthStart = nil
-                    navDirection = 0
                 }
             }
 
@@ -197,7 +174,6 @@ struct LedgerView: View {
                 Button("\(title) — \(currency(subtotal))") {
                     withAnimation(.easeInOut) {
                         selectedMonthStart = mStart
-                        navDirection = 0
                     }
                 }
             }
@@ -221,7 +197,6 @@ struct LedgerView: View {
             Button {
                 withAnimation(.easeInOut) {
                     selectedMonthStart = nil
-                    navDirection = 0
                 }
             } label: {
                 Text("All").font(.subheadline)
@@ -286,50 +261,35 @@ struct LedgerView: View {
         return "all"
     }
 
-    private var contentTransition: AnyTransition {
-        if isSearching { return .opacity }
-        guard selectedMonthStart != nil else { return .opacity }
-
-        if navDirection >= 0 {
-            return .move(edge: .trailing).combined(with: .opacity)
-        } else {
-            return .move(edge: .leading).combined(with: .opacity)
-        }
-    }
-
     // MARK: - Row UI
 
     private func row(_ tx: TransactionModel) -> some View {
-        Button {
-            editingTx = tx
-        } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(tx.categoryName).font(.headline)
-                    Spacer()
-                    Text(currency(tx.signedAmount)).font(.headline)
-                }
-
-                HStack(spacing: 8) {
-                    if let sub = tx.subcategoryName, !sub.isEmpty {
-                        Text(sub).foregroundStyle(.secondary)
-                    }
-                    Text(tx.date.formatted(date: .abbreviated, time: .shortened))
-                        .foregroundStyle(.secondary)
-                }
-                .font(.caption)
-
-                if let note = tx.note, !note.isEmpty {
-                    Text(note)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(tx.categoryName).font(.headline)
+                Spacer()
+                Text(currency(tx.signedAmount)).font(.headline)
             }
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
+
+            HStack(spacing: 8) {
+                if let sub = tx.subcategoryName, !sub.isEmpty {
+                    Text(sub).foregroundStyle(.secondary)
+                }
+                Text(tx.date.formatted(date: .abbreviated, time: .shortened))
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption)
+
+            if let note = tx.note, !note.isEmpty {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())              // full row tappable
+        .onTapGesture { editingTx = tx }        // tap opens edit
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button { editingTx = tx } label: { Label("Edit", systemImage: "pencil") }
             Button(role: .destructive) { deleteById(tx) } label: { Label("Delete", systemImage: "trash") }
@@ -440,7 +400,6 @@ struct LedgerView: View {
 
     private func goToOlderMonth() {
         guard let i = selectedIndex, i < allMonthStarts.count - 1 else { return }
-        navDirection = +1
         withAnimation(.easeInOut(duration: 0.25)) {
             selectedMonthStart = allMonthStarts[i + 1]
         }
@@ -448,7 +407,6 @@ struct LedgerView: View {
 
     private func goToNewerMonth() {
         guard let i = selectedIndex, i > 0 else { return }
-        navDirection = -1
         withAnimation(.easeInOut(duration: 0.25)) {
             selectedMonthStart = allMonthStarts[i - 1]
         }
